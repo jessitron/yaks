@@ -118,7 +118,7 @@ enum Commands {
         recursive: bool,
     },
     /// Remove a yak
-    #[command(alias = "rm", display_order = 10)]
+    #[command(aliases = ["rm", "delete"], display_order = 10)]
     Remove {
         /// The yak name (space-separated words)
         name: Vec<String>,
