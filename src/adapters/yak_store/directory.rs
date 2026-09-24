@@ -9,14 +9,21 @@ use crate::domain::ports::{EventStreamRevision, ReadYakStore, WriteYakStore};
 use crate::domain::slug::{Name, YakId};
 use crate::domain::YakBlockerSnapshot;
 use anyhow::Result;
+use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 const PROJECTION_REVISION_FILE: &str = ".projection-tip";
+const PROJECTION_LOCK_FILE: &str = ".projection.lock";
 const EMPTY_REVISION: &str = "empty";
 
 #[derive(Clone)]
 pub struct DirectoryStorage {
     base_path: PathBuf,
+}
+
+pub struct ProjectionLock {
+    _file: File,
 }
 
 impl DirectoryStorage {
@@ -48,6 +55,28 @@ impl DirectoryStorage {
     /// Non-yak files (e.g. `.schema-version`) are preserved.
     pub fn clear(&self) -> Result<()> {
         io::clear(&self.base_path)
+    }
+
+    pub fn lock_projection(&self, timeout: Duration) -> Result<ProjectionLock> {
+        std::fs::create_dir_all(&self.base_path)?;
+        let file = File::options()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(self.base_path.join(PROJECTION_LOCK_FILE))?;
+        let started = Instant::now();
+        loop {
+            match fs2::FileExt::try_lock_exclusive(&file) {
+                Ok(()) => return Ok(ProjectionLock { _file: file }),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    if started.elapsed() >= timeout {
+                        anyhow::bail!("timed out waiting for another yx command in this worktree");
+                    }
+                    std::thread::sleep(Duration::from_millis(25));
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
     }
 
     pub fn read_projection_revision(&self) -> Result<Option<EventStreamRevision>> {
@@ -187,6 +216,20 @@ mod tests {
         let result = DirectoryStorage::without_git(temp_dir.path());
         assert!(result.is_ok());
         assert_eq!(result.unwrap().base_path, temp_dir.path());
+    }
+
+    #[test]
+    fn projection_lock_serializes_access_to_same_directory() {
+        let (storage, _temp) = setup_test_storage();
+        let first = storage.lock_projection(Duration::ZERO).unwrap();
+
+        let error = storage.lock_projection(Duration::ZERO).err().unwrap();
+        assert!(error
+            .to_string()
+            .contains("another yx command in this worktree"));
+
+        drop(first);
+        storage.lock_projection(Duration::ZERO).unwrap();
     }
 
     #[test]

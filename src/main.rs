@@ -872,6 +872,14 @@ fn main() -> Result<()> {
     };
     event_bus.register(Box::new(storage.clone()));
 
+    // Serialize projection reads and writes within this worktree. Git's event
+    // ref still coordinates writers across different worktrees.
+    let _projection_lock = if repo_root.is_some() {
+        Some(storage.lock_projection(std::time::Duration::from_secs(5))?)
+    } else {
+        None
+    };
+
     // Refresh a worktree-local projection whenever the shared event ref has moved.
     // The checkpoint is written only after a successful replay, so an interrupted
     // rebuild is retried by the next command.
