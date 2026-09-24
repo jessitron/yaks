@@ -1,7 +1,15 @@
 use std::fmt;
 
+/// Maximum byte length of a filesystem slug. This stays comfortably below
+/// common 255-byte path-component limits and leaves room for ID suffixes.
+pub const MAX_SLUG_BYTES: usize = 200;
+const SHORTENED_SLUG_HASH_LEN: usize = 8;
+
+/// Maximum byte length of an automatically generated yak ID.
+pub const MAX_YAK_ID_BYTES: usize = MAX_SLUG_BYTES + 1 + 4;
+
 /// Immutable unique identifier. Created at birth, never changes.
-/// Format: slug + 4-char random suffix (e.g., "make-the-tea-a1b2")
+/// Format: slug + 4-char deterministic suffix (e.g., "make-the-tea-a1b2")
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct YakId(String);
 
@@ -124,7 +132,8 @@ impl AsRef<str> for Name {
 }
 
 /// Slugify a name: lowercase, spaces to hyphens, strip non-alphanumeric,
-/// collapse multiple hyphens. No random suffix — just a human-readable slug.
+/// and collapse multiple hyphens. Long slugs retain a readable prefix and
+/// gain a deterministic hash suffix so they fit in filesystem components.
 ///
 /// Used for directory names on disk. Only needs sibling-uniqueness.
 pub fn slugify(name: &str) -> Slug {
@@ -151,7 +160,18 @@ pub fn slugify(name: &str) -> Slug {
     }
 
     // Trim leading/trailing hyphens
-    Slug(collapsed.trim_matches('-').to_string())
+    let normalized = collapsed.trim_matches('-');
+    if normalized.len() <= MAX_SLUG_BYTES {
+        return Slug(normalized.to_string());
+    }
+
+    // Preserve a readable prefix while retaining distinction between names
+    // that differ only beyond it. Slugs contain ASCII only, so byte slicing is
+    // safe here.
+    let prefix_len = MAX_SLUG_BYTES - 1 - SHORTENED_SLUG_HASH_LEN;
+    let prefix = normalized[..prefix_len].trim_end_matches('-');
+    let suffix = stable_hash_suffix(normalized, SHORTENED_SLUG_HASH_LEN);
+    Slug(format!("{prefix}-{suffix}"))
 }
 
 /// Generate a deterministic unique ID from a yak name and its
@@ -170,11 +190,26 @@ pub fn generate_id(name: &str, parent_id: Option<&YakId>) -> YakId {
         Some(pid) => format!("{}::{}", pid, slug),
         None => slug.to_string(),
     };
-    let suffix = hash_suffix(&ancestry_path);
+    let suffix = stable_hash_suffix(&ancestry_path, 4);
     YakId(format!("{}-{}", slug, suffix))
 }
 
-fn hash_suffix(input: &str) -> String {
+/// Validate a user-supplied ID before it becomes a Git tree entry.
+/// Historical IDs remain loadable through the infallible `From` conversions.
+pub fn validate_new_yak_id(id: &YakId) -> Result<(), String> {
+    if id.as_str().is_empty() {
+        return Err("Yak ID cannot be empty".to_string());
+    }
+    if id.as_str().len() > MAX_YAK_ID_BYTES {
+        return Err(format!("Yak ID must be at most {MAX_YAK_ID_BYTES} bytes"));
+    }
+    if id.as_str().contains(['/', '\0']) {
+        return Err("Yak ID cannot contain '/' or null bytes".to_string());
+    }
+    Ok(())
+}
+
+fn stable_hash_suffix(input: &str, length: usize) -> String {
     // Use FNV-1a hash for stability across Rust versions.
     // FNV-1a is simple, fast, and explicitly designed to be stable.
     const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
@@ -186,8 +221,9 @@ fn hash_suffix(input: &str) -> String {
         hash = hash.wrapping_mul(FNV_PRIME);
     }
 
+    debug_assert!(length <= 8);
     let chars: Vec<char> = "abcdefghijklmnopqrstuvwxyz0123456789".chars().collect();
-    (0..4)
+    (0..length)
         .map(|i| chars[((hash >> (i * 8)) as usize) % chars.len()])
         .collect()
 }
@@ -227,6 +263,30 @@ mod tests {
     #[test]
     fn slugify_trims_leading_and_trailing_whitespace() {
         assert_eq!(slugify("  hello world  ").as_str(), "hello-world");
+    }
+
+    #[test]
+    fn slugify_bounds_long_names_without_losing_distinction() {
+        let common_prefix = "a".repeat(220);
+        let first = slugify(&format!("{common_prefix} first"));
+        let second = slugify(&format!("{common_prefix} second"));
+
+        assert_eq!(first.as_str().len(), MAX_SLUG_BYTES);
+        assert_eq!(second.as_str().len(), MAX_SLUG_BYTES);
+        assert_ne!(first, second);
+        assert_eq!(first, slugify(&format!("{common_prefix} first")));
+    }
+
+    #[test]
+    fn slugify_leaves_name_at_limit_unchanged() {
+        let name = "a".repeat(MAX_SLUG_BYTES);
+        assert_eq!(slugify(&name).as_str(), name);
+    }
+
+    #[test]
+    fn generated_id_is_bounded_for_long_name() {
+        let id = generate_id(&"a".repeat(300), None);
+        assert_eq!(id.as_str().len(), MAX_YAK_ID_BYTES);
     }
 
     #[test]
@@ -299,6 +359,15 @@ mod tests {
     fn yak_id_from_string() {
         let id = YakId::from("test".to_string());
         assert_eq!(id.as_str(), "test");
+    }
+
+    #[test]
+    fn new_yak_id_validation_rejects_invalid_tree_entry_names() {
+        assert!(validate_new_yak_id(&YakId::from("")).is_err());
+        assert!(validate_new_yak_id(&YakId::from("parent/child")).is_err());
+        assert!(validate_new_yak_id(&YakId::from("nul\0byte")).is_err());
+        assert!(validate_new_yak_id(&YakId::from("a".repeat(MAX_YAK_ID_BYTES + 1))).is_err());
+        assert!(validate_new_yak_id(&YakId::from("a".repeat(MAX_YAK_ID_BYTES))).is_ok());
     }
 
     #[test]

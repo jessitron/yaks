@@ -1,7 +1,7 @@
 use crate::domain::event_metadata::EventMetadata;
 use crate::domain::events::*;
 use crate::domain::ports::ReadYakStore;
-use crate::domain::slug::{generate_id, slugify, Name, YakId};
+use crate::domain::slug::{generate_id, slugify, validate_new_yak_id, Name, YakId};
 use crate::domain::yak_state::YakState;
 use crate::domain::{ManualBlockerSnapshot, Yak, YakBlockerSnapshot, YakEvent, YakMapSnapshot};
 use anyhow::Result;
@@ -483,7 +483,13 @@ impl YakMap {
         // Check slug uniqueness among siblings
         self.check_sibling_slug_uniqueness(name.as_str(), &parent_id, None)?;
 
-        let id = explicit_id.unwrap_or_else(|| generate_id(name.as_str(), parent_id.as_ref()));
+        let id = match explicit_id {
+            Some(id) => {
+                validate_new_yak_id(&id).map_err(|error| anyhow::anyhow!(error))?;
+                id
+            }
+            None => generate_id(name.as_str(), parent_id.as_ref()),
+        };
 
         self.yaks.insert(
             id.clone(),
@@ -3837,6 +3843,18 @@ mod tests {
 
         assert_eq!(id, YakId::from("custom-id"));
         assert!(map.yaks.contains_key(&YakId::from("custom-id")));
+    }
+
+    #[test]
+    fn test_add_yak_rejects_overlong_explicit_id() {
+        let mut map = YakMap::new();
+        let overlong_id = YakId::from("a".repeat(crate::domain::MAX_YAK_ID_BYTES + 1));
+
+        let error = map
+            .add_yak("test", None, None, None, Some(overlong_id), vec![])
+            .unwrap_err();
+
+        assert!(error.to_string().contains("ID must be at most"));
     }
 
     #[test]

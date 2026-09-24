@@ -10,6 +10,16 @@ Feature: Add yaks
       When I add the yak "Fix the bug"
       And there should be 1 yak
 
+  Rule: Long names remain usable
+    Names are display text, while bounded slugs and IDs are used as storage keys.
+
+    @fullstack
+    Example: A name longer than a filesystem component can be added
+      Given I have a clean git repository
+      When I add the yak "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      And I list the yaks in "plain" format
+      Then the output should include "aaaaaaaaaaaaaaaaaaaa"
+
   Rule: Multi-word names work without quotes
     The CLI joins trailing arguments into a single yak name,
     so users can type `yx add this is a test` without quotes.

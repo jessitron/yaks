@@ -479,6 +479,35 @@ mod tests {
     }
 
     #[test]
+    fn legacy_overlong_id_and_name_rebuild_to_bounded_directory() {
+        let (mut storage, _temp) = setup_test_storage();
+        let name = "a".repeat(300);
+        let legacy_id = YakId::from(format!("{}-a1b2", "a".repeat(300)));
+
+        storage
+            .on_event(&YakEvent::Added(
+                AddedEvent {
+                    name: Name::from(name.as_str()),
+                    id: legacy_id.clone(),
+                    parent_id: None,
+                },
+                EventMetadata::default_legacy(),
+            ))
+            .unwrap();
+
+        let directory_name = std::fs::read_dir(&storage.base_path)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .file_name();
+        assert!(directory_name.as_encoded_bytes().len() <= crate::domain::MAX_SLUG_BYTES);
+        let yak = ReadYakStore::get_yak(&storage, &legacy_id).unwrap();
+        assert_eq!(yak.id, legacy_id);
+        assert_eq!(yak.name, name);
+    }
+
+    #[test]
     fn test_directory_storage_read_yak_store_list_yaks() {
         let (mut storage, _temp) = setup_test_storage();
 
