@@ -16,9 +16,9 @@ use yx::adapters::yak_store::DirectoryStorage;
 use yx::application::{
     AddBlocker, AddTag, AddYak, Application, CommandHandler, CompactEvents, DoneYak, EditContext,
     EditField, EnsureGitignore, GenerateCompletions, ListTags, ListYaks, MoveYak, PruneYaks,
-    RemoveBlocker, RemoveTag, RemoveYak, RenameYak, ResetDiskFromGit, ResetGitFromDisk, SetState,
-    SetSyncRemote, ShowContext, ShowField, ShowLog, ShowSyncRemote, ShowYak, StartYak, SyncYaks,
-    WatchEvents, WriteContext, WriteField,
+    RemoveBlocker, RemoveTag, RemoveYak, RenameYak, ResetDiskFromGit, SetState, SetSyncRemote,
+    ShowContext, ShowField, ShowLog, ShowSyncRemote, ShowYak, StartYak, SyncYaks, WatchEvents,
+    WriteContext, WriteField,
 };
 use yx::domain::normalize_tag;
 use yx::domain::ports::{EventStore, LocalWorkspacePort};
@@ -217,12 +217,6 @@ enum Commands {
         /// Rebuild .yaks directory from git tree (default)
         #[arg(long)]
         disk_from_git: bool,
-        /// Wipe git history and replay yaks from disk through Application layer
-        #[arg(long)]
-        git_from_disk: bool,
-        /// Skip confirmation prompt
-        #[arg(long)]
-        force: bool,
     },
     /// Manage blockers on a yak
     #[command(display_order = 9)]
@@ -707,21 +701,7 @@ fn route_command(
             show,
             edit,
         } => route_field(handler, &name.join(" "), &field, show, edit, &stdin),
-        Commands::Reset {
-            disk_from_git,
-            git_from_disk,
-            force,
-        } => {
-            if disk_from_git && git_from_disk {
-                anyhow::bail!("Cannot use both --disk-from-git and --git-from-disk");
-            }
-
-            if git_from_disk {
-                handler.handle(ResetGitFromDisk::new().with_force(force))
-            } else {
-                handler.handle(ResetDiskFromGit::new())
-            }
-        }
+        Commands::Reset { disk_from_git: _ } => handler.handle(ResetDiskFromGit::new()),
         Commands::Blocker { action } => handle_blocker_command(handler, action),
         Commands::Tag { action } => handle_tag_command(handler, action),
         Commands::Compact { yes } => handler.handle(CompactEvents::new().with_skip_confirm(yes)),
@@ -1041,6 +1021,12 @@ mod tests {
             Commands::Add { name, .. } => assert_eq!(name.join(" "), "this is a test"),
             other => panic!("Expected Add, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn reset_rejects_removed_git_from_disk_options() {
+        assert!(Cli::try_parse_from(["yx", "reset", "--git-from-disk"]).is_err());
+        assert!(Cli::try_parse_from(["yx", "reset", "--force"]).is_err());
     }
 
     #[test]

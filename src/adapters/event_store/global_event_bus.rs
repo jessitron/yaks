@@ -242,7 +242,12 @@ mod tests {
         let (_tmp, mut store, mut bus) = setup();
         store.append(&event("before", "before-a1b2", 1)).unwrap();
         let mut subscription = bus.subscribe_from_now().unwrap();
-        store.wipe().unwrap();
+        store
+            .repo()
+            .find_reference(store.ref_name())
+            .unwrap()
+            .delete()
+            .unwrap();
         store.append(&event("after", "after-c3d4", 2)).unwrap();
 
         let err = subscription.next_batch(Some(Duration::ZERO)).unwrap_err();

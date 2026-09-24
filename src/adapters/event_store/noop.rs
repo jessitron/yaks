@@ -21,10 +21,6 @@ impl EventStore for NoOpEventStore {
         Ok(())
     }
 
-    fn wipe(&mut self) -> Result<()> {
-        Ok(())
-    }
-
     fn sync(
         &mut self,
         _bus: &mut crate::infrastructure::event_bus::EventBus,

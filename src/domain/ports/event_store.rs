@@ -14,10 +14,6 @@ pub trait EventStore {
     /// snapshot of the full state at this point in the event stream.
     fn compact(&mut self, metadata: EventMetadata) -> Result<()>;
 
-    /// Clear all events, preparing for a full replay.
-    /// Used by the reset-git-from-disk workflow.
-    fn wipe(&mut self) -> Result<()>;
-
     /// Get the repository workdir path. Returns None for non-git stores or bare repos.
     fn repo_path(&self) -> Option<std::path::PathBuf>;
 

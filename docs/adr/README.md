@@ -30,6 +30,7 @@ ADRs document significant architectural and design decisions.
 | [0022](0022-lazy-migration-replaces-boundary-events.md) | Lazy migration replaces boundary events | accepted |
 | [0023](0023-agent-aware-help-via-displayport.md) | Agent-aware help via DisplayPort | proposed |
 | [0024](0024-content-addressed-check-verification.md) | Content-addressed check verification | proposed |
+| [0025](0025-remove-reset-git-from-disk.md) | Remove reset git from disk | accepted |
 
 ## When to Write an ADR
 

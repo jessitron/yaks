@@ -753,21 +753,16 @@ event. See granularity issue in Commentary.
 
 ### Reset
 
-Rebuild either the disk read model from git events, or the
-git event log from disk state.
+Discard and rebuild the disk read model from the authoritative git events.
 
 | Expression | Where | Form |
 |------------|-------|------|
-| `yx reset` | CLI | Command (two modes via flags) |
-| `yx reset --disk-from-git` | CLI | Safe: rebuild .yaks/ from events (default) |
-| `yx reset --git-from-disk` | CLI | Destructive: wipe events, recreate from .yaks/ |
+| `yx reset` | CLI | Command |
+| `yx reset --disk-from-git` | CLI | Explicit spelling of the default behavior |
 | `ResetDiskFromGit` | `src/application/reset_disk_from_git.rs` | Use case |
-| `ResetGitFromDisk` | `src/application/reset_git_from_disk.rs` | Use case |
 
 - **Used in**: `features/reset.feature`
 - **Related to**: Event Store, Yak Store
-
-See Commentary — two opposite operations sharing a name.
 
 ### Start
 
@@ -996,15 +991,6 @@ Add or remove labels on a yak.
   (YakStore). Different purposes in CQRS.
 - **Suggestion**: Rename `ReadYakStore`/`WriteYakStore` to
   `YakProjection` or `YakDirectory`.
-
-#### "reset" overloaded with two modes
-- **Type**: Homonym
-- **Where**: `src/main.rs`, `features/reset.feature`
-- **Problem**: `yx reset --disk-from-git` (safe, routine)
-  and `yx reset --git-from-disk` (destructive, rare) are
-  opposite operations sharing a command name.
-- **Suggestion**: Separate commands: `yx rebuild` (safe)
-  and `yx reset` (destructive).
 
 #### "Moved" event covers reparenting only
 - **Type**: Awkward Name (minor)

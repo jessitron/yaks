@@ -427,14 +427,6 @@ impl EventStore for GitEventStore {
         );
     }
 
-    fn wipe(&mut self) -> Result<()> {
-        let delete_result = self.repo.find_reference(&self.ref_name);
-        if let Ok(mut reference) = delete_result {
-            reference.delete()?;
-        }
-        Ok(())
-    }
-
     fn compact(&mut self, metadata: crate::domain::event_metadata::EventMetadata) -> Result<()> {
         if self.get_latest_commit()?.is_none() {
             anyhow::bail!("Cannot compact an empty event store");

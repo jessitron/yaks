@@ -23,6 +23,8 @@ This project uses SemVer. While yaks is in the `0.x` phase, breaking changes may
 
 ### Removed
 
+- Removed the destructive `yx reset --git-from-disk` recovery mode; Git is now always authoritative over the disposable `.yaks` projection.
+
 ### Fixed
 
 - Blocker cycle validation errors now describe the problem as a `circular dependency`.
