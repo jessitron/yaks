@@ -61,6 +61,7 @@ impl DirectoryStorage {
         std::fs::create_dir_all(&self.base_path)?;
         let file = File::options()
             .create(true)
+            .truncate(false)
             .read(true)
             .write(true)
             .open(self.base_path.join(PROJECTION_LOCK_FILE))?;
