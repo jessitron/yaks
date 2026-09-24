@@ -760,6 +760,40 @@ mod tests {
     }
 
     #[test]
+    fn projection_update_rebuilds_when_checkpoint_is_not_an_ancestor() {
+        let (_tmp, mut store) = setup_test_repo();
+        let added = |name: &str, id: &str| {
+            YakEvent::Added(
+                AddedEvent {
+                    name: Name::from(name),
+                    id: YakId::from(id),
+                    parent_id: None,
+                },
+                EventMetadata::default_legacy(),
+            )
+        };
+        store.append(&added("old", "old-a1b2")).unwrap();
+        let checkpoint = store.current_revision().unwrap();
+        store
+            .repo()
+            .find_reference(store.ref_name())
+            .unwrap()
+            .delete()
+            .unwrap();
+        store.append(&added("new", "new-c3d4")).unwrap();
+
+        let update = store.projection_update(Some(&checkpoint)).unwrap();
+
+        match update {
+            EventStreamUpdate::Rebuild { events, .. } => {
+                assert_eq!(events.len(), 1);
+                assert_eq!(events[0].yak_id(), "new-c3d4");
+            }
+            other => panic!("expected rebuild, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn incremental_projection_does_not_parse_events_before_checkpoint() {
         let (_tmp, mut store) = setup_test_repo();
         let empty_tree_oid = store.repo.treebuilder(None).unwrap().write().unwrap();
