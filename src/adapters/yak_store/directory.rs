@@ -259,8 +259,11 @@ mod tests {
     #[test]
     fn corrupt_projection_revision_is_treated_as_missing() {
         let (storage, temp) = setup_test_storage();
-        std::fs::write(temp.path().join(PROJECTION_REVISION_FILE), "not an oid").unwrap();
+        let checkpoint = temp.path().join(PROJECTION_REVISION_FILE);
+        std::fs::write(&checkpoint, "not an oid").unwrap();
+        assert_eq!(storage.read_projection_revision().unwrap(), None);
 
+        std::fs::write(checkpoint, "gggggggggggggggggggggggggggggggggggggggg").unwrap();
         assert_eq!(storage.read_projection_revision().unwrap(), None);
     }
 

@@ -161,6 +161,50 @@ mod tests {
     use crate::domain::events::AddedEvent;
     use crate::domain::slug::{Name, YakId};
 
+    fn added(name: &str, id: &str) -> YakEvent {
+        YakEvent::Added(
+            AddedEvent {
+                name: Name::from(name),
+                id: YakId::from(id),
+                parent_id: None,
+            },
+            EventMetadata::default_legacy(),
+        )
+    }
+
+    #[test]
+    fn projection_update_is_current_for_matching_empty_revision() {
+        let store = InMemoryEventStore::new();
+
+        let update = store
+            .projection_update(Some(&EventStreamRevision::Empty))
+            .unwrap();
+
+        assert!(matches!(
+            update,
+            EventStreamUpdate::Current(EventStreamRevision::Empty)
+        ));
+    }
+
+    #[test]
+    fn projection_update_starts_after_checkpoint_event() {
+        let mut store = InMemoryEventStore::new();
+        store.append(&added("one", "one-a1b2")).unwrap();
+        let checkpoint = store.current_revision().unwrap();
+        store.append(&added("two", "two-c3d4")).unwrap();
+        store.append(&added("three", "three-e5f6")).unwrap();
+
+        let update = store.projection_update(Some(&checkpoint)).unwrap();
+
+        match update {
+            EventStreamUpdate::Incremental { events, .. } => {
+                let ids: Vec<&str> = events.iter().map(YakEvent::yak_id).collect();
+                assert_eq!(ids, vec!["two-c3d4", "three-e5f6"]);
+            }
+            other => panic!("expected incremental update, got {other:?}"),
+        }
+    }
+
     #[test]
     fn compact_stores_snapshot_in_event() {
         let mut store = InMemoryEventStore::new();
