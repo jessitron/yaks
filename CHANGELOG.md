@@ -25,6 +25,7 @@ This project uses SemVer. While yaks is in the `0.x` phase, breaking changes may
 
 ### Fixed
 
+- Long yak titles now use bounded, deterministic slugs and IDs instead of exceeding filesystem path-component limits.
 - Blocker cycle validation errors now describe the problem as a `circular dependency`.
 
 ### Security

@@ -22,7 +22,9 @@ pub use field::{
     validate_field_name, validate_field_name_format, CONTEXT_FIELD, CREATED_FIELD, ID_FIELD,
     NAME_FIELD, STATE_FIELD, TAGS_FIELD,
 };
-pub use slug::{generate_id, slugify, Name, Slug, YakId};
+pub use slug::{
+    generate_id, slugify, validate_new_yak_id, Name, Slug, YakId, MAX_SLUG_BYTES, MAX_YAK_ID_BYTES,
+};
 pub use tag::{format_tag, normalize_tag};
 pub use yak::{validate_yak_name, Yak};
 pub use yak_map::{BlockingDependency, YakMap};
