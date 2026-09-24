@@ -5,11 +5,14 @@ mod io;
 mod permissions;
 mod query;
 
-use crate::domain::ports::{ReadYakStore, WriteYakStore};
+use crate::domain::ports::{EventStreamRevision, ReadYakStore, WriteYakStore};
 use crate::domain::slug::{Name, YakId};
 use crate::domain::YakBlockerSnapshot;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
+
+const PROJECTION_REVISION_FILE: &str = ".projection-tip";
+const EMPTY_REVISION: &str = "empty";
 
 #[derive(Clone)]
 pub struct DirectoryStorage {
@@ -45,6 +48,39 @@ impl DirectoryStorage {
     /// Non-yak files (e.g. `.schema-version`) are preserved.
     pub fn clear(&self) -> Result<()> {
         io::clear(&self.base_path)
+    }
+
+    pub fn read_projection_revision(&self) -> Result<Option<EventStreamRevision>> {
+        let path = self.base_path.join(PROJECTION_REVISION_FILE);
+        let value = match std::fs::read_to_string(path) {
+            Ok(value) => value,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let value = value.trim();
+        if value == EMPTY_REVISION {
+            return Ok(Some(EventStreamRevision::Empty));
+        }
+        if value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Ok(Some(EventStreamRevision::Commit(value.to_string())));
+        }
+        Ok(None)
+    }
+
+    pub fn write_projection_revision(&self, revision: &EventStreamRevision) -> Result<()> {
+        std::fs::create_dir_all(&self.base_path)?;
+        let value = match revision {
+            EventStreamRevision::Empty => EMPTY_REVISION,
+            EventStreamRevision::Commit(oid) => oid,
+        };
+        let temporary = self.base_path.join(format!(
+            "{}.{}.tmp",
+            PROJECTION_REVISION_FILE,
+            std::process::id()
+        ));
+        std::fs::write(&temporary, format!("{value}\n"))?;
+        std::fs::rename(temporary, self.base_path.join(PROJECTION_REVISION_FILE))?;
+        Ok(())
     }
 }
 
@@ -151,6 +187,37 @@ mod tests {
         let result = DirectoryStorage::without_git(temp_dir.path());
         assert!(result.is_ok());
         assert_eq!(result.unwrap().base_path, temp_dir.path());
+    }
+
+    #[test]
+    fn projection_revision_roundtrips_empty_and_commit() {
+        let (storage, _temp) = setup_test_storage();
+        assert_eq!(storage.read_projection_revision().unwrap(), None);
+
+        storage
+            .write_projection_revision(&EventStreamRevision::Empty)
+            .unwrap();
+        assert_eq!(
+            storage.read_projection_revision().unwrap(),
+            Some(EventStreamRevision::Empty)
+        );
+
+        let oid = "0123456789abcdef0123456789abcdef01234567";
+        storage
+            .write_projection_revision(&EventStreamRevision::Commit(oid.to_string()))
+            .unwrap();
+        assert_eq!(
+            storage.read_projection_revision().unwrap(),
+            Some(EventStreamRevision::Commit(oid.to_string()))
+        );
+    }
+
+    #[test]
+    fn corrupt_projection_revision_is_treated_as_missing() {
+        let (storage, temp) = setup_test_storage();
+        std::fs::write(temp.path().join(PROJECTION_REVISION_FILE), "not an oid").unwrap();
+
+        assert_eq!(storage.read_projection_revision().unwrap(), None);
     }
 
     #[test]

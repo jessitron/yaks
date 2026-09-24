@@ -5,9 +5,16 @@ use anyhow::Result;
 
 use super::DisplayPort;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum EventStreamRevision {
+    Empty,
+    Commit(String),
+}
+
 pub trait EventStore {
     fn append(&mut self, event: &YakEvent) -> Result<()>;
     fn get_all_events(&self) -> Result<Vec<YakEvent>>;
+    fn current_revision(&self) -> Result<EventStreamRevision>;
     fn sync(&mut self, bus: &mut EventBus, output: &dyn DisplayPort) -> Result<()>;
 
     /// Create and append a Compacted event, which represents a

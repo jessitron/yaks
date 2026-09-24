@@ -2,7 +2,7 @@ use anyhow::Result;
 use git2::Repository;
 use std::path::Path;
 
-use crate::domain::ports::{EventStore, EventStoreReader};
+use crate::domain::ports::{EventStore, EventStoreReader, EventStreamRevision};
 use crate::domain::YakEvent;
 
 use super::commit;
@@ -446,6 +446,13 @@ impl EventStore for GitEventStore {
         let snapshot = yak_map.snapshot(removed_yak_ids);
         let event = YakEvent::Compacted(snapshot, metadata);
         self.append(&event)
+    }
+
+    fn current_revision(&self) -> Result<EventStreamRevision> {
+        Ok(match self.get_latest_commit()? {
+            Some(commit) => EventStreamRevision::Commit(commit.id().to_string()),
+            None => EventStreamRevision::Empty,
+        })
     }
 
     fn get_all_events(&self) -> Result<Vec<YakEvent>> {

@@ -27,6 +27,7 @@ This project uses SemVer. While yaks is in the `0.x` phase, breaking changes may
 
 ### Fixed
 
+- Worktree-local `.yaks` projections now refresh when the shared yak event ref changes.
 - Blocker cycle validation errors now describe the problem as a `circular dependency`.
 
 ### Security

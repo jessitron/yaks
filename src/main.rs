@@ -872,11 +872,17 @@ fn main() -> Result<()> {
     };
     event_bus.register(Box::new(storage.clone()));
 
-    // After migration, rebuild the disk projection from the compacted event store.
-    // This clears old files (e.g. .metadata.json) and writes the current format.
-    if needs_projection_reset {
-        let all_events = event_store.get_all_events()?;
-        event_bus.rebuild(&all_events)?;
+    // Refresh a worktree-local projection whenever the shared event ref has moved.
+    // The checkpoint is written only after a successful replay, so an interrupted
+    // rebuild is retried by the next command.
+    if repo_root.is_some() {
+        let revision = event_store.current_revision()?;
+        let projection_is_current = storage.read_projection_revision()?.as_ref() == Some(&revision);
+        if needs_projection_reset || !projection_is_current {
+            let all_events = event_store.get_all_events()?;
+            event_bus.rebuild(&all_events)?;
+            storage.write_projection_revision(&revision)?;
+        }
     }
 
     // Initialize other adapters

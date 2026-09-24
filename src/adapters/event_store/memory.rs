@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::sync::{Arc, Mutex};
 
 use crate::adapters::views::Message;
-use crate::domain::ports::{EventStore, EventStoreReader};
+use crate::domain::ports::{EventStore, EventStoreReader, EventStreamRevision};
 use crate::domain::{YakEvent, YakMap};
 
 #[derive(Clone)]
@@ -52,6 +52,17 @@ impl EventStore for InMemoryEventStore {
 
     fn get_all_events(&self) -> Result<Vec<YakEvent>> {
         Ok(self.events.lock().unwrap().clone())
+    }
+
+    fn current_revision(&self) -> Result<EventStreamRevision> {
+        Ok(self
+            .events
+            .lock()
+            .unwrap()
+            .last()
+            .and_then(|event| event.metadata().event_id.clone())
+            .map(EventStreamRevision::Commit)
+            .unwrap_or(EventStreamRevision::Empty))
     }
 
     fn compact(&mut self, metadata: crate::domain::event_metadata::EventMetadata) -> Result<()> {

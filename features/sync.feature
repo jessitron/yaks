@@ -57,6 +57,18 @@ Feature: yx sync - Collaborate on Yaks via Git
       When bugfix syncs yaks
       Then bugfix should have a yak called "make the tea"
 
+    Example: A worktree automatically catches up with changes made in another worktree
+      Given a git clone of origin called main
+      And a git worktree of main called editor
+      And a git worktree of main called agent
+      And editor has a yak called "current yak"
+      And editor has a yak called "obsolete yak"
+      And agent has synced yaks
+      And editor has set the context of "current yak" to "new instructions"
+      And editor has removed the yak "obsolete yak"
+      Then agent yak "current yak" should have context "new instructions"
+      And agent should not have a yak called "obsolete yak"
+
   Rule: Removals propagate through sync
 
     Example: Alice's removal appears on bob's side
