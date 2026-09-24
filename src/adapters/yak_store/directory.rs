@@ -70,10 +70,13 @@ impl DirectoryStorage {
             match fs2::FileExt::try_lock_exclusive(&file) {
                 Ok(()) => return Ok(ProjectionLock { _file: file }),
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    if started.elapsed() >= timeout {
+                    let Some(remaining) = timeout.checked_sub(started.elapsed()) else {
+                        anyhow::bail!("timed out waiting for another yx command in this worktree");
+                    };
+                    if remaining.is_zero() {
                         anyhow::bail!("timed out waiting for another yx command in this worktree");
                     }
-                    std::thread::sleep(Duration::from_millis(25));
+                    std::thread::sleep(Duration::from_millis(25).min(remaining));
                 }
                 Err(error) => return Err(error.into()),
             }
