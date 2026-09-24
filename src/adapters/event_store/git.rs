@@ -160,6 +160,59 @@ impl GitEventStore {
         Ok(events)
     }
 
+    fn read_events_between(&self, from: Option<git2::Oid>, to: git2::Oid) -> Result<Vec<YakEvent>> {
+        let mut revwalk = self.repo.revwalk()?;
+        revwalk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
+        revwalk.push(to)?;
+        if let Some(from) = from {
+            revwalk.hide(from)?;
+        }
+
+        let mut batches = Vec::new();
+        for oid in revwalk {
+            let commit = self.repo.find_commit(oid?)?;
+            let full_message = commit.message().unwrap_or("");
+            let first_line = full_message.lines().next().unwrap_or("").trim();
+            if first_line.is_empty() {
+                continue;
+            }
+
+            if matches!(first_line, "Compacted" | "Migrated") {
+                let metadata = Self::extract_metadata_from_commit(&commit, full_message);
+                let raw_tree = commit.tree()?;
+                let tree = super::migration::migrate_tree_to_current(&self.repo, &raw_tree)?;
+                let snapshot = tree::read_yak_map_snapshot_from_tree(&self.repo, &tree)?;
+                let event = if first_line == "Migrated" {
+                    YakEvent::Migrated(snapshot, metadata)
+                } else {
+                    YakEvent::Compacted(snapshot, metadata)
+                };
+                batches.push(vec![event]);
+                break;
+            }
+
+            let Ok(mut event) = YakEvent::parse(first_line) else {
+                continue;
+            };
+            let metadata = Self::extract_metadata_from_commit(&commit, full_message);
+            let legacy_state = legacy_added_state_update(self, &mut event, &commit, &metadata)?;
+            if let YakEvent::FieldUpdated(ref mut update, _) = event {
+                let raw_tree = commit.tree()?;
+                let tree = super::migration::migrate_tree_to_current(&self.repo, &raw_tree)?;
+                update.content =
+                    self.read_field_updated_content(&tree, &update.id, &update.field_name)?;
+            }
+            let mut batch = vec![event.with_metadata(metadata)];
+            if let Some(state) = legacy_state {
+                batch.push(state);
+            }
+            batches.push(batch);
+        }
+
+        batches.reverse();
+        Ok(batches.into_iter().flatten().collect())
+    }
+
     /// Build a tree for the event, ensuring .schema-version is stamped.
     fn build_versioned_tree(&self, event: &YakEvent) -> Result<git2::Tree<'_>> {
         let current_tree = self.get_current_tree()?;
@@ -471,29 +524,23 @@ impl EventStore for GitEventStore {
             });
         };
 
-        let is_ancestor = match (checkpoint, &revision) {
-            (EventStreamRevision::Empty, EventStreamRevision::Commit(_)) => true,
+        let incremental_range = match (checkpoint, &revision) {
+            (EventStreamRevision::Empty, EventStreamRevision::Commit(to)) => {
+                git2::Oid::from_str(to).ok().map(|to| (None, to))
+            }
             (EventStreamRevision::Commit(from), EventStreamRevision::Commit(to)) => {
-                let from = git2::Oid::from_str(from).ok();
-                let to = git2::Oid::from_str(to).ok();
-                match (from, to) {
-                    (Some(from), Some(to)) => self.repo.graph_descendant_of(to, from)?,
-                    _ => false,
+                match (git2::Oid::from_str(from), git2::Oid::from_str(to)) {
+                    (Ok(from), Ok(to)) if self.repo.graph_descendant_of(to, from)? => {
+                        Some((Some(from), to))
+                    }
+                    _ => None,
                 }
             }
-            _ => false,
+            _ => None,
         };
 
-        if is_ancestor {
-            let mut events = EventStore::get_all_events(self)?;
-            if let EventStreamRevision::Commit(from) = checkpoint {
-                let Some(position) = events.iter().rposition(|event| {
-                    event.metadata().commit_sha.as_deref() == Some(from.as_str())
-                }) else {
-                    return Ok(EventStreamUpdate::Rebuild { revision, events });
-                };
-                events.drain(..=position);
-            }
+        if let Some((from, to)) = incremental_range {
+            let events = self.read_events_between(from, to)?;
             return Ok(EventStreamUpdate::Incremental { revision, events });
         }
 
@@ -707,6 +754,47 @@ mod tests {
             EventStreamUpdate::Incremental { events, .. } => {
                 assert_eq!(events.len(), 1);
                 assert_eq!(events[0].yak_id(), "two-c3d4");
+            }
+            other => panic!("expected incremental update, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn incremental_projection_does_not_parse_events_before_checkpoint() {
+        let (_tmp, mut store) = setup_test_repo();
+        let empty_tree_oid = store.repo.treebuilder(None).unwrap().write().unwrap();
+        let empty_tree = store.repo.find_tree(empty_tree_oid).unwrap();
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        store
+            .repo
+            .commit(
+                Some("refs/notes/yaks"),
+                &sig,
+                &sig,
+                "FieldUpdated: \"missing-yak-a1b2\" \"state\"\n\nEvent-Id: corrupt",
+                &empty_tree,
+                &[],
+            )
+            .unwrap();
+        drop(empty_tree);
+        let checkpoint = store.current_revision().unwrap();
+        store
+            .append(&YakEvent::Added(
+                AddedEvent {
+                    name: Name::from("new"),
+                    id: YakId::from("new-c3d4"),
+                    parent_id: None,
+                },
+                EventMetadata::default_legacy(),
+            ))
+            .unwrap();
+
+        let update = store.projection_update(Some(&checkpoint)).unwrap();
+
+        match update {
+            EventStreamUpdate::Incremental { events, .. } => {
+                assert_eq!(events.len(), 1);
+                assert_eq!(events[0].yak_id(), "new-c3d4");
             }
             other => panic!("expected incremental update, got {other:?}"),
         }
