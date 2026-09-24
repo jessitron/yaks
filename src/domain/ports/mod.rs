@@ -11,7 +11,7 @@ pub mod yak_store;
 
 pub use authentication::AuthenticationPort;
 pub use event_listener::EventListener;
-pub use event_store::{EventStore, EventStoreReader, EventStreamRevision};
+pub use event_store::{EventStore, EventStoreReader, EventStreamRevision, EventStreamUpdate};
 pub use global_event_bus::{GlobalEventBus, GlobalEventSubscription};
 pub use local_workspace::LocalWorkspacePort;
 pub use user_display::DisplayPort;

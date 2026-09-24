@@ -11,10 +11,27 @@ pub enum EventStreamRevision {
     Commit(String),
 }
 
+#[derive(Clone, Debug)]
+pub enum EventStreamUpdate {
+    Current(EventStreamRevision),
+    Incremental {
+        revision: EventStreamRevision,
+        events: Vec<YakEvent>,
+    },
+    Rebuild {
+        revision: EventStreamRevision,
+        events: Vec<YakEvent>,
+    },
+}
+
 pub trait EventStore {
     fn append(&mut self, event: &YakEvent) -> Result<()>;
     fn get_all_events(&self) -> Result<Vec<YakEvent>>;
     fn current_revision(&self) -> Result<EventStreamRevision>;
+    fn projection_update(
+        &self,
+        checkpoint: Option<&EventStreamRevision>,
+    ) -> Result<EventStreamUpdate>;
     fn sync(&mut self, bus: &mut EventBus, output: &dyn DisplayPort) -> Result<()>;
 
     /// Create and append a Compacted event, which represents a

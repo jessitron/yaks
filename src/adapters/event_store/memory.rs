@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::sync::{Arc, Mutex};
 
 use crate::adapters::views::Message;
-use crate::domain::ports::{EventStore, EventStoreReader, EventStreamRevision};
+use crate::domain::ports::{EventStore, EventStoreReader, EventStreamRevision, EventStreamUpdate};
 use crate::domain::{YakEvent, YakMap};
 
 #[derive(Clone)]
@@ -63,6 +63,34 @@ impl EventStore for InMemoryEventStore {
             .and_then(|event| event.metadata().event_id.clone())
             .map(EventStreamRevision::Commit)
             .unwrap_or(EventStreamRevision::Empty))
+    }
+
+    fn projection_update(
+        &self,
+        checkpoint: Option<&EventStreamRevision>,
+    ) -> Result<EventStreamUpdate> {
+        let revision = self.current_revision()?;
+        if checkpoint == Some(&revision) {
+            return Ok(EventStreamUpdate::Current(revision));
+        }
+        let events = EventStore::get_all_events(self)?;
+        let Some(checkpoint) = checkpoint else {
+            return Ok(EventStreamUpdate::Rebuild { revision, events });
+        };
+        let start = match checkpoint {
+            EventStreamRevision::Empty => Some(0),
+            EventStreamRevision::Commit(event_id) => events
+                .iter()
+                .rposition(|event| event.metadata().event_id.as_deref() == Some(event_id))
+                .map(|position| position + 1),
+        };
+        match start {
+            Some(start) => Ok(EventStreamUpdate::Incremental {
+                revision,
+                events: events[start..].to_vec(),
+            }),
+            None => Ok(EventStreamUpdate::Rebuild { revision, events }),
+        }
     }
 
     fn compact(&mut self, metadata: crate::domain::event_metadata::EventMetadata) -> Result<()> {

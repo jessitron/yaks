@@ -21,7 +21,7 @@ use yx::application::{
     WriteContext, WriteField,
 };
 use yx::domain::normalize_tag;
-use yx::domain::ports::{EventStore, LocalWorkspacePort};
+use yx::domain::ports::{EventStore, EventStreamUpdate, LocalWorkspacePort};
 use yx::infrastructure::EventBus;
 
 fn styles() -> Styles {
@@ -876,12 +876,27 @@ fn main() -> Result<()> {
     // The checkpoint is written only after a successful replay, so an interrupted
     // rebuild is retried by the next command.
     if repo_root.is_some() {
-        let revision = event_store.current_revision()?;
-        let projection_is_current = storage.read_projection_revision()?.as_ref() == Some(&revision);
-        if needs_projection_reset || !projection_is_current {
-            let all_events = event_store.get_all_events()?;
-            event_bus.rebuild(&all_events)?;
-            storage.write_projection_revision(&revision)?;
+        let checkpoint = storage.read_projection_revision()?;
+        let update = if needs_projection_reset {
+            EventStreamUpdate::Rebuild {
+                revision: event_store.current_revision()?,
+                events: event_store.get_all_events()?,
+            }
+        } else {
+            event_store.projection_update(checkpoint.as_ref())?
+        };
+        match update {
+            EventStreamUpdate::Current(_) => {}
+            EventStreamUpdate::Incremental { revision, events } => {
+                for event in &events {
+                    event_bus.notify(event)?;
+                }
+                storage.write_projection_revision(&revision)?;
+            }
+            EventStreamUpdate::Rebuild { revision, events } => {
+                event_bus.rebuild(&events)?;
+                storage.write_projection_revision(&revision)?;
+            }
         }
     }
 

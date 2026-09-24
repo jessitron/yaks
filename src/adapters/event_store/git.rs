@@ -2,7 +2,7 @@ use anyhow::Result;
 use git2::Repository;
 use std::path::Path;
 
-use crate::domain::ports::{EventStore, EventStoreReader, EventStreamRevision};
+use crate::domain::ports::{EventStore, EventStoreReader, EventStreamRevision, EventStreamUpdate};
 use crate::domain::YakEvent;
 
 use super::commit;
@@ -455,6 +455,54 @@ impl EventStore for GitEventStore {
         })
     }
 
+    fn projection_update(
+        &self,
+        checkpoint: Option<&EventStreamRevision>,
+    ) -> Result<EventStreamUpdate> {
+        let revision = self.current_revision()?;
+        if checkpoint == Some(&revision) {
+            return Ok(EventStreamUpdate::Current(revision));
+        }
+
+        let Some(checkpoint) = checkpoint else {
+            return Ok(EventStreamUpdate::Rebuild {
+                revision,
+                events: EventStore::get_all_events(self)?,
+            });
+        };
+
+        let is_ancestor = match (checkpoint, &revision) {
+            (EventStreamRevision::Empty, EventStreamRevision::Commit(_)) => true,
+            (EventStreamRevision::Commit(from), EventStreamRevision::Commit(to)) => {
+                let from = git2::Oid::from_str(from).ok();
+                let to = git2::Oid::from_str(to).ok();
+                match (from, to) {
+                    (Some(from), Some(to)) => self.repo.graph_descendant_of(to, from)?,
+                    _ => false,
+                }
+            }
+            _ => false,
+        };
+
+        if is_ancestor {
+            let mut events = EventStore::get_all_events(self)?;
+            if let EventStreamRevision::Commit(from) = checkpoint {
+                let Some(position) = events.iter().rposition(|event| {
+                    event.metadata().commit_sha.as_deref() == Some(from.as_str())
+                }) else {
+                    return Ok(EventStreamUpdate::Rebuild { revision, events });
+                };
+                events.drain(..=position);
+            }
+            return Ok(EventStreamUpdate::Incremental { revision, events });
+        }
+
+        Ok(EventStreamUpdate::Rebuild {
+            revision,
+            events: EventStore::get_all_events(self)?,
+        })
+    }
+
     fn get_all_events(&self) -> Result<Vec<YakEvent>> {
         let Some(latest) = self.get_latest_commit()? else {
             return Ok(Vec::new());
@@ -633,6 +681,35 @@ mod tests {
             "Commit message should contain Event-Id trailer, got: {}",
             message
         );
+    }
+
+    #[test]
+    fn projection_update_returns_only_events_after_checkpoint() {
+        let (_tmp, mut store) = setup_test_repo();
+        let added = |name: &str, id: &str| {
+            YakEvent::Added(
+                AddedEvent {
+                    name: Name::from(name),
+                    id: YakId::from(id),
+                    parent_id: None,
+                },
+                EventMetadata::default_legacy(),
+            )
+        };
+
+        store.append(&added("one", "one-a1b2")).unwrap();
+        let checkpoint = store.current_revision().unwrap();
+        store.append(&added("two", "two-c3d4")).unwrap();
+
+        let update = store.projection_update(Some(&checkpoint)).unwrap();
+
+        match update {
+            EventStreamUpdate::Incremental { events, .. } => {
+                assert_eq!(events.len(), 1);
+                assert_eq!(events[0].yak_id(), "two-c3d4");
+            }
+            other => panic!("expected incremental update, got {other:?}"),
+        }
     }
 
     #[test]

@@ -4,7 +4,7 @@
 // available. Allows directory-based storage to function without
 // any git infrastructure.
 
-use crate::domain::ports::{EventStore, EventStreamRevision};
+use crate::domain::ports::{EventStore, EventStreamRevision, EventStreamUpdate};
 use crate::domain::YakEvent;
 use anyhow::Result;
 
@@ -19,6 +19,12 @@ impl EventStore for NoOpEventStore {
     }
     fn current_revision(&self) -> Result<EventStreamRevision> {
         Ok(EventStreamRevision::Empty)
+    }
+    fn projection_update(
+        &self,
+        _checkpoint: Option<&EventStreamRevision>,
+    ) -> Result<EventStreamUpdate> {
+        Ok(EventStreamUpdate::Current(EventStreamRevision::Empty))
     }
     fn compact(&mut self, _metadata: crate::domain::event_metadata::EventMetadata) -> Result<()> {
         Ok(())
