@@ -6,6 +6,8 @@ This project uses SemVer. While yaks is in the `0.x` phase, breaking changes may
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-06
+
 ### Removed
 
 - Removed the destructive `yx reset --git-from-disk` recovery mode; Git is now always authoritative over the disposable `.yaks` projection.
