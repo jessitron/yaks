@@ -6,6 +6,14 @@ This project uses SemVer. While yaks is in the `0.x` phase, breaking changes may
 
 ## [Unreleased]
 
+### Removed
+
+- Removed the destructive `yx reset --git-from-disk` recovery mode; Git is now always authoritative over the disposable `.yaks` projection.
+
+### Fixed
+
+- Worktree-local `.yaks` projections now refresh when the shared yak event ref changes.
+
 ## [0.3.0] - 2026-08-12
 
 ### Added
@@ -23,11 +31,8 @@ This project uses SemVer. While yaks is in the `0.x` phase, breaking changes may
 
 ### Removed
 
-- Removed the destructive `yx reset --git-from-disk` recovery mode; Git is now always authoritative over the disposable `.yaks` projection.
-
 ### Fixed
 
-- Worktree-local `.yaks` projections now refresh when the shared yak event ref changes.
 - Blocker cycle validation errors now describe the problem as a `circular dependency`.
 
 ### Security
