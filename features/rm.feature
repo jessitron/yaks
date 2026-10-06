@@ -1,7 +1,8 @@
 Feature: Remove yaks
   Delete yaks that are no longer needed. Removes only the specified
   yak, not its parent or children. Uses fuzzy matching for name
-  resolution. Use rm for specific yaks, prune for bulk cleanup.
+  resolution. Use remove, rm, or delete for specific yaks, and prune for
+  bulk cleanup.
 
   Rule: Removing a yak deletes it from the list
 

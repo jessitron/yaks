@@ -11,6 +11,7 @@ pub const COMMANDS: &[&str] = &[
     "wip",
     "remove",
     "rm",
+    "delete",
     "move",
     "mv",
     "rename",
@@ -35,8 +36,8 @@ pub fn complete_with_state(words: &[&str], yaks: &[(&str, bool)]) -> Vec<String>
 
     // Commands that take yak names as arguments
     let commands_with_yak_args = vec![
-        "add", "done", "finish", "start", "wip", "remove", "rm", "move", "mv", "rename", "context",
-        "state", "field", "show", "blocker",
+        "add", "done", "finish", "start", "wip", "remove", "rm", "delete", "move", "mv", "rename",
+        "context", "state", "field", "show", "blocker",
     ];
 
     // Flags for each command
@@ -135,9 +136,17 @@ mod tests {
 
     #[test]
     fn filters_commands_by_prefix() {
-        let result = complete(&["yx", "re"], &[]);
-        assert!(result.contains(&"remove".to_string()));
+        let result = complete(&["yx", "de"], &[]);
+        assert!(result.contains(&"delete".to_string()));
         assert!(!result.contains(&"add".to_string()));
+    }
+
+    #[test]
+    fn completes_yak_names_for_delete() {
+        let yaks = &["fix-bug", "write-docs"];
+        let result = complete(&["yx", "delete", ""], yaks);
+        assert!(result.contains(&"fix-bug".to_string()));
+        assert!(result.contains(&"write-docs".to_string()));
     }
 
     #[test]

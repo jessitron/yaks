@@ -726,7 +726,7 @@ Delete a specific yak.
 
 | Expression | Where | Form |
 |------------|-------|------|
-| `yx remove` (alias `rm`) | CLI | Command |
+| `yx remove` (aliases `rm`, `delete`) | CLI | Command |
 | `RemoveYak` | `src/application/remove_yak.rs` | Use case |
 | `remove_yak()` | `src/domain/yak_map.rs:402` | Aggregate method |
 | `Removed` / `RemovedEvent` | `src/domain/event.rs`, `src/domain/events/removed.rs:8` | Domain event |

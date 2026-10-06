@@ -1068,6 +1068,19 @@ mod tests {
     }
 
     #[test]
+    fn delete_alias_parses_as_remove() {
+        let cli = Cli::try_parse_from(["yx", "delete", "old", "yak", "--recursive"]).unwrap();
+
+        match cli.command {
+            Commands::Remove { name, recursive } => {
+                assert_eq!(name.join(" "), "old yak");
+                assert!(recursive);
+            }
+            other => panic!("Expected Remove, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn reset_rejects_removed_git_from_disk_options() {
         assert!(Cli::try_parse_from(["yx", "reset", "--git-from-disk"]).is_err());
         assert!(Cli::try_parse_from(["yx", "reset", "--force"]).is_err());
